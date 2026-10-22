@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="ms" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Permainan Nahu Al-Lughah Al-Arabiah Al-Mu'asirah</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Amiri (Arabic) & Outfit (Latin) -->
+    <link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+
+    <!-- MediaPipe Hands CDN Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <!-- Canvas Confetti library for winning effect -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Outfit', sans-serif;
+            user-select: none;
+            overflow: hidden;
+            background-color: #0f172a;
+        }
+        .font-arabic {
+            font-family: 'Amiri', serif;
+        }
+        /* Custom Glowing & Gift Box Animation Styles */
+        .gift-box {
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.3s ease;
+        }
+        .gift-box.active-dwell {
+            transform: scale(1.05);
+            box-shadow: 0 0 25px rgba(234, 179, 8, 0.8);
+        }
+        .gift-lid {
+            transition: transform 0.5s ease-in-out;
+            transform-origin: top center;
+        }
+        .gift-opened .gift-lid {
+            transform: translateY(-40px) rotate(-15deg);
+        }
+        /* Glassmorphism Panel */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+        .glass-box {
+            background: rgba(30, 41, 59, 0.85);
+            backdrop-filter: blur(8px);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+        /* Mirrored webcam feed */
+        #webcam {
+            transform: scaleX(-1);
+        }
+        /* Pointer Ring Progress Bar */
+        .dwell-ring {
+            transition: stroke-dashoffset 0.05s linear;
+        }
+        @keyframes pulseGlow {
+            0%, 100% { filter: drop-shadow(0 0 8px rgba(250, 204, 21, 0.8)); }
+            50% { filter: drop-shadow(0 0 20px rgba(250, 204, 21, 1)); }
+        }
+        .pulse-glow {
+            animation: pulseGlow 1.5s infinite;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen relative text-white flex flex-col justify-between select-none">
+
+    <!-- Background Webcam Mirror Canvas & Live Video Feed -->
+    <video id="webcam" class="absolute inset-0 w-full h-full object-cover opacity-35 z-0" autoplay playsinline muted></video>
+    <canvas id="output_canvas" class="absolute inset-0 w-full h-full object-cover z-0 opacity-40"></canvas>
+
+    <!-- Custom Visual Index Finger Cursor Overlay -->
+    <div id="pointer-cursor" class="fixed top-0 left-0 w-12 h-12 pointer-events-none z-50 transform -translate-x-1/2 -translate-y-1/2 hidden transition-opacity duration-200">
+        <svg class="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+            <path class="text-slate-700" stroke-width="4" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+            <path id="dwell-progress-bar" class="dwell-ring text-amber-400" stroke-dasharray="100, 100" stroke-dashoffset="100" stroke-linecap="round" stroke-width="4" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+        </svg>
+        <div class="absolute inset-0 flex items-center justify-center">
+            <div class="w-4 h-4 bg-amber-400 rounded-full shadow-lg border-2 border-white pulse-glow"></div>
+        </div>
+    </div>
+
+    <!-- MAIN UI CONTAINER -->
+    <div class="relative z-10 w-full h-full flex flex-col justify-between p-4 md:p-6 pointer-events-none">
+
+        <!-- Top HUD Navigation / Scoreboard Header -->
+        <header class="glass-panel rounded-2xl p-4 flex flex-wrap justify-between items-center shadow-2xl pointer-events-auto border border-amber-500/30">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-300 flex items-center justify-center text-slate-900 font-bold text-xl shadow-lg">
+                    <i class="fa-solid fa-book-quran"></i>
+                </div>
+                <div>
+                    <h1 class="text-base md:text-lg font-bold bg-gradient-to-r from-amber-200 via-amber-400 to-yellow-100 bg-clip-text text-transparent">
+                        Nahu Al-Lughah Al-Arabiah Al-Mu'asirah
+                    </h1>
+                    <p class="text-xs text-slate-300">SMA / KBD • Fi'il Madhi, Mudhari', 'Amar, Sohih, Mu'tal & Wazan</p>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-4 md:space-x-8 mt-2 sm:mt-0">
+                <!-- Question Progress counter -->
+                <div class="text-center">
+                    <span class="text-xs uppercase tracking-wider text-slate-400 block">Soalan</span>
+                    <span id="question-tracker" class="text-lg font-extrabold text-amber-300">1 / 10</span>
+                </div>
+                <!-- Countdown Timer -->
+                <div class="text-center">
+                    <span class="text-xs uppercase tracking-wider text-slate-400 block">Masa Masa</span>
+                    <span id="timer-display" class="text-lg font-mono font-extrabold text-emerald-400">20s</span>
+                </div>
+                <!-- Score Indicator -->
+                <div class="text-center">
+                    <span class="text-xs uppercase tracking-wider text-slate-400 block">Jumlah Skor</span>
+                    <span id="score-display" class="text-xl font-black text-amber-400">0</span>
+                </div>
+                <!-- Camera Control / Manual Mouse Toggle -->
+                <button id="toggle-cam-btn" onclick="toggleCameraControl()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold border border-slate-600 transition flex items-center gap-2">
+                    <i id="cam-icon" class="fa-solid fa-video text-emerald-400"></i>
+                    <span id="cam-status">Webcam On</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Center Floating Question Board -->
+        <main class="self-center my-auto w-full max-w-3xl pointer-events-auto">
+            <div id="question-card" class="glass-panel rounded-3xl p-6 md:p-8 text-center shadow-2xl border-2 border-amber-400/40 relative overflow-hidden transform transition duration-300">
+                <div class="absolute top-0 right-0 bg-amber-500/20 text-amber-300 text-xs px-3 py-1 rounded-bl-xl border-l border-b border-amber-500/30">
+                    <span id="question-category">Fi'il Sohih & Mu'tal</span>
+                </div>
+                <h3 id="question-instruction" class="text-sm md:text-base text-slate-300 mb-3 font-medium">
+                    Pilih jawapan yang betul untuk melengkapkan tempat kosong:
+                </h3>
+                <div id="question-text-arabic" class="font-arabic text-2xl md:text-4xl font-bold leading-relaxed my-4 text-amber-100 dir-rtl tracking-wide">
+                    ...
+                </div>
+                <p id="question-translation" class="text-xs md:text-sm text-slate-400 italic">
+                    (Maksud ayat dalam Bahasa Melayu)
+                </p>
+            </div>
+        </main>
+
+        <!-- FOUR CORNER GIFT BOXES FOR MULTIPLE CHOICE OPTIONS -->
+        <!-- Top-Left Gift (Box A) -->
+        <div id="gift-0" data-index="0" class="gift-box glass-box rounded-2xl p-4 w-44 md:w-64 absolute top-24 left-4 md:left-8 pointer-events-auto cursor-pointer flex flex-col items-center border border-amber-500/30 hover:border-amber-400 transition">
+            <div class="gift-icon-wrapper relative w-12 h-12 md:w-16 md:h-16 mb-2">
+                <div class="gift-lid absolute inset-0 flex items-center justify-center text-3xl md:text-4xl text-amber-400 drop-shadow">
+                    <i class="fa-solid fa-box-open hidden box-opened-icon"></i>
+                    <i class="fa-solid fa-box box-closed-icon"></i>
+                </div>
+            </div>
+            <span class="text-xs font-bold text-amber-400 uppercase tracking-widest mb-1">Pilihan A</span>
+            <span class="option-arabic font-arabic text-lg md:text-2xl font-semibold text-center text-white dir-rtl"></span>
+        </div>
+
+        <!-- Top-Right Gift (Box B) -->
+        <div id="gift-1" data-index="1" class="gift-box glass-box rounded-2xl p-4 w-44 md:w-64 absolute top-24 right-4 md:right-8 pointer-events-auto cursor-pointer flex flex-col items-center border border-amber-500/30 hover:border-amber-400 transition">
+            <div class="gift-icon-wrapper relative w-12 h-12 md:w-16 md:h-16 mb-2">
+                <div class="gift-lid absolute inset-0 flex items-center justify-center text-3xl md:text-4xl text-sky-400 drop-shadow">
+                    <i class="fa-solid fa-box-open hidden box-opened-icon"></i>
+                    <i class="fa-solid fa-box box-closed-icon"></i>
+                </div>
+            </div>
+            <span class="text-xs font-bold text-sky-400 uppercase tracking-widest mb-1">Pilihan B</span>
+            <span class="option-arabic font-arabic text-lg md:text-2xl font-semibold text-center text-white dir-rtl"></span>
+        </div>
+
+        <!-- Bottom-Left Gift (Box C) -->
+        <div id="gift-2" data-index="2" class="gift-box glass-box rounded-2xl p-4 w-44 md:w-64 absolute bottom-6 left-4 md:left-8 pointer-events-auto cursor-pointer flex flex-col items-center border border-amber-500/30 hover:border-amber-400 transition">
+            <div class="gift-icon-wrapper relative w-12 h-12 md:w-16 md:h-16 mb-2">
+                <div class="gift-lid absolute inset-0 flex items-center justify-center text-3xl md:text-4xl text-emerald-400 drop-shadow">
+                    <i class="fa-solid fa-box-open hidden box-opened-icon"></i>
+                    <i class="fa-solid fa-box box-closed-icon"></i>
+                </div>
+            </div>
+            <span class="text-xs font-bold text-emerald-400 uppercase tracking-widest mb-1">Pilihan C</span>
+            <span class="option-arabic font-arabic text-lg md:text-2xl font-semibold text-center text-white dir-rtl"></span>
+        </div>
+
+        <!-- Bottom-Right Gift (Box D) -->
+        <div id="gift-3" data-index="3" class="gift-box glass-box rounded-2xl p-4 w-44 md:w-64 absolute bottom-6 right-4 md:right-8 pointer-events-auto cursor-pointer flex flex-col items-center border border-amber-500/30 hover:border-amber-400 transition">
+            <div class="gift-icon-wrapper relative w-12 h-12 md:w-16 md:h-16 mb-2">
+                <div class="gift-lid absolute inset-0 flex items-center justify-center text-3xl md:text-4xl text-purple-400 drop-shadow">
+                    <i class="fa-solid fa-box-open hidden box-opened-icon"></i>
+                    <i class="fa-solid fa-box box-closed-icon"></i>
+                </div>
+            </div>
+            <span class="text-xs font-bold text-purple-400 uppercase tracking-widest mb-1">Pilihan D</span>
+            <span class="option-arabic font-arabic text-lg md:text-2xl font-semibold text-center text-white dir-rtl"></span>
+        </div>
+
+    </div>
+
+    <!-- START / INSTRUCTION MODAL -->
+    <div id="start-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4">
+        <div class="glass-panel max-w-xl w-full rounded-3xl p-6 md:p-8 text-center border-2 border-amber-400/50 shadow-2xl relative">
+            <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-400 to-yellow-200 text-slate-900 mx-auto flex items-center justify-center text-3xl shadow-lg mb-4">
+                <i class="fa-solid fa-hand-pointer"></i>
+            </div>
+            <h2 class="text-2xl md:text-3xl font-extrabold text-amber-300 mb-2">
+                Nahu Bahasa Arab SMA
+            </h2>
+            <p class="text-slate-300 text-sm mb-4">
+                Fi'il Madhi, Mudhari', 'Amar, Fi'il Sohih, Mu'tal & Wazan Thulathi
+            </p>
+
+            <div class="bg-slate-900/80 rounded-2xl p-4 text-left text-xs md:text-sm text-slate-300 space-y-3 mb-6 border border-slate-700">
+                <div class="flex items-start gap-3">
+                    <span class="bg-amber-500/20 text-amber-300 p-2 rounded-lg font-bold">1</span>
+                    <p><strong class="text-white">Kawalan Gestur Jari Telunjuk:</strong> Benarkan akses webcam. Tunjuk jari telunjuk anda ke arah salah satu daripada 4 Kotak Hadiah di penjuru skrin.</p>
+                </div>
+                <div class="flex items-start gap-3">
+                    <span class="bg-amber-500/20 text-amber-300 p-2 rounded-lg font-bold">2</span>
+                    <p><strong class="text-white">Dwell 1 Saat:</strong> Tahan penunjuk jari pada kotak pilihan selama **1 saat** untuk membuka hadiah jawapan.</p>
+                </div>
+                <div class="flex items-start gap-3">
+                    <span class="bg-amber-500/20 text-amber-300 p-2 rounded-lg font-bold">3</span>
+                    <p><strong class="text-white">Kawalan Alternatif Tetikus:</strong> Sekiranya kamera tidak digunakan, anda boleh menggerakkan tetikus atau sentuh skrin untuk bermain.</p>
+                </div>
+            </div>
+
+            <button onclick="startGame()" class="w-full py-4 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-300 text-slate-950 font-extrabold text-lg shadow-xl hover:brightness-110 active:scale-95 transition">
+                Mula Permainan <i class="fa-solid fa-play ml-2"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- GAME OVER / RESULTS MODAL -->
+    <div id="result-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-lg p-4 hidden">
+        <div class="glass-panel max-w-lg w-full rounded-3xl p-6 md:p-8 text-center border-2 border-amber-400/50 shadow-2xl">
+            <div class="w-16 h-16 rounded-full bg-amber-400 text-slate-950 mx-auto flex items-center justify-center text-3xl shadow-lg mb-3">
+                <i class="fa-solid fa-trophy"></i>
+            </div>
+            <h2 class="text-2xl md:text-3xl font-black text-amber-300 mb-1">Keputusan Permainan</h2>
+            <p class="text-xs text-slate-400 mb-4">Tahniah! Anda telah menyempurnakan soalan Nahu.</p>
+
+            <div class="grid grid-cols-2 gap-3 mb-6">
+                <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-700">
+                    <span class="text-xs text-slate-400 block">Jumlah Skor</span>
+                    <span id="res-score" class="text-2xl font-extrabold text-amber-400">0</span>
+                </div>
+                <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-700">
+                    <span class="text-xs text-slate-400 block">Keputusan Betul</span>
+                    <span id="res-accuracy" class="text-2xl font-extrabold text-emerald-400">0/10</span>
+                </div>
+            </div>
+
+            <!-- High Scores Local Leaderboard -->
+            <div class="bg-slate-900/60 rounded-2xl p-4 mb-6 border border-slate-800">
+                <h4 class="text-xs font-bold uppercase tracking-wider text-amber-400 mb-2 flex items-center justify-center gap-1">
+                    <i class="fa-solid fa-crown"></i> Markah Tinggi Teratas
+                </h4>
+                <ul id="leaderboard-list" class="text-xs text-slate-300 space-y-1.5 divide-y divide-slate-800">
+                    <!-- Populated dynamically -->
+                </ul>
+            </div>
+
+            <button onclick="restartGame()" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 font-bold text-base shadow-lg hover:brightness-110 active:scale-95 transition">
+                Main Semula <i class="fa-solid fa-rotate-right ml-2"></i>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /* WEB AUDIO API SOUND EFFECTS SYNTHESIZER */
+        class SoundFX {
+            constructor() {
+                this.ctx = null;
+            }
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+            playHover() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(440, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(880, this.ctx.currentTime + 0.05);
+                gain.gain.setValueAtTime(0.05, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.05);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.05);
+            }
+            playSuccess() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                [523.25, 659.25, 783.99, 1046.50].forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+                    gain.gain.setValueAtTime(0.15, now + idx * 0.08);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.3);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + idx * 0.08);
+                    osc.stop(now + idx * 0.08 + 0.3);
+                });
+            }
+            playWrong() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(180, now);
+                osc.frequency.exponentialRampToValueAtTime(90, now + 0.25);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.25);
+            }
+        }
+        const sound = new SoundFX();
+
+        /* COMPREHENSIVE ARABIC GRAMMAR QUESTION BANK (LAM SMA) */
+        const questionsData = [
+            {
+                category: "Fi'il Sohih (الفعل الصحيح)",
+                instruction: "Tentukan jenis Fi'il Sohih bagi kata kerja berikut:",
+                arabic: "الفعل (كَتَبَ) يُعْتَبَرُ فِعْلاً ...",
+                translation: "Fi'il (كَتَبَ) dikategorikan sebagai Fi'il ...",
+                options: [
+                    { text: "صَحِيحٌ سَالِمٌ", correct: true },
+                    { text: "صَحِيحٌ مَهْمُوزٌ", correct: false },
+                    { text: "صَحِيحٌ مُضَاعَفٌ", correct: false },
+                    { text: "فِعْلٌ مُعْتَلٌّ", correct: false }
+                ]
+            },
+            {
+                category: "Fi'il Sohih Mahmuz (المهموز)",
+                instruction: "Isi tempat kosong dengan jenis Fi'il Sohih yang betul:",
+                arabic: "الفعل (أَكَلَ) الَّذِي يَحْتَوِي عَلَى هَمْزَةٍ هُوَ ...",
+                translation: "Fi'il (أَكَلَ) yang mengandungi huruf hamzah ialah ...",
+                options: [
+                    { text: "صَحِيحٌ سَالِمٌ", correct: false },
+                    { text: "صَحِيحٌ مَهْمُوزٌ", correct: true },
+                    { text: "صَحِيحٌ مُضَاعَفٌ", correct: false },
+                    { text: "مُعْتَلٌّ مِثَالٌ", correct: false }
+                ]
+            },
+            {
+                category: "Fi'il Sohih Muda'af (المضاعف)",
+                instruction: "Apakah jenis Fi'il bagi kata kerja yang mempunyai sabdu/tasydid ini?",
+                arabic: "الفعل (مَدَّ) يُعَدُّ مِنَ الأَفْعَالِ ...",
+                translation: "Fi'il (مَدَّ) dikira daripada kata kerja ...",
+                options: [
+                    { text: "صَحِيحٌ مَهْمُوزٌ", correct: false },
+                    { text: "صَحِيحٌ مُضَاعَفٌ", correct: true },
+                    { text: "مُعْتَلٌّ أَجْوَفٌ", correct: false },
+                    { text: "صَحِيحٌ سَالِمٌ", correct: false }
+                ]
+            },
+            {
+                category: "Fi'il Mu'tal Mithal (المعتل المثال)",
+                instruction: "Pilih kategori Fi'il Mu'tal bagi perkataan ini:",
+                arabic: "الفعل (وَجَدَ) الَّذِي بَدَأَ بِحَرْفِ العِلَّةِ هُوَ ...",
+                translation: "Fi'il (وَجَدَ) yang bermula dengan huruf 'illat (و) ialah ...",
+                options: [
+                    { text: "مُعْتَلٌّ مِثَالٌ", correct: true },
+                    { text: "مُعْتَلٌّ أَجْوَفٌ", correct: false },
+                    { text: "مُعْتَلٌّ نَاقِصٌ", correct: false },
+                    { text: "مُعْتَلٌّ لَفِيفٌ", correct: false }
+                ]
+            },
+            {
+                category: "Fi'il Mu'tal Ajwaf (المعتل الأجوف)",
+                instruction: "Tentukan jenis kata kerja apabila huruf 'illat berada di tengah:",
+                arabic: "الفعل (قَالَ) الَّذِي وَسَطُهُ حَرْفُ عِلَّةٍ يُسَمَّى ...",
+                translation: "Fi'il (قَالَ) yang di tengahnya mempunyai huruf 'illat dinamakan ...",
+                options: [
+                    { text: "مُعْتَلٌّ مِثَالٌ", correct: false },
+                    { text: "مُعْتَلٌّ أَجْوَفٌ", correct: true },
+                    { text: "مُعْتَلٌّ نَاقِصٌ", correct: false },
+                    { text: "صَحِيحٌ سَالِمٌ", correct: false }
+                ]
+            },
+            {
+                category: "Fi'il Mu'tal Naqis (المعتل الناقص)",
+                instruction: "Pilih jawapan yang tepat bagi kata kerja yang diakhiri huruf 'illat:",
+                arabic: "الفعل (دَعَا) الَّذِي آخِرُهُ حَرْفُ عِلَّةٍ هُوَ ...",
+                translation: "Fi'il (دَعَا) yang di akhirnya huruf 'illat ialah ...",
+                options: [
+                    { text: "مُعْتَلٌّ أَجْوَفٌ", correct: false },
+                    { text: "مُعْتَلٌّ نَاقِصٌ", correct: true },
+                    { text: "مُعْتَلٌّ مِثَالٌ", correct: false },
+                    { text: "صَحِيحٌ مَهْمُوزٌ", correct: false }
+                ]
+            },
+            {
+                category: "Pembahagian Masa Fi'il (الماضي والمضارع والأمر)",
+                instruction: "Tentukan bentuk Fi'il Mudhari' (الفعل المضارع) bagi kata kerja berikut:",
+                arabic: "الفِعْلُ المَُضَارِعُ مِنْ (ذَهَبَ) هُوَ ...",
+                translation: "Fi'il Mudhari' bagi (ذَهَبَ) ialah ...",
+                options: [
+                    { text: "إِذْهَبْ", correct: false },
+                    { text: "يَذْهَبُ", correct: true },
+                    { text: "ذَهَبُوا", correct: false },
+                    { text: "ذَاهِبٌ", correct: false }
+                ]
+            },
+            {
+                category: "Fi'il 'Amar (فعل الأمر)",
+                instruction: "Pilih Fi'il 'Amar (Kata Perintah) bagi kata kerja berikut:",
+                arabic: "فِعْلُ الأَمْرِ مِنْ (قَرَأَ) لِلْمُفْرَدِ المُذَكَّرِ هُوَ ...",
+                translation: "Fi'il 'Amar bagi (قَرَأَ) untuk seorang lelaki ialah ...",
+                options: [
+                    { text: "يَقْرَأُ", correct: false },
+                    { text: "اقْرَأْ", correct: true },
+                    { text: "قَرَأْتُ", correct: false },
+                    { text: "قَارِئٌ", correct: false }
+                ]
+            },
+            {
+                category: "Wazan Fi'il Thulathi (وزن الفعل الثلاثي)",
+                instruction: "Pilih wazan penimbang yang betul bagi kata kerja ini:",
+                arabic: "وَزْنُ الفِعْلِ (عَلِمَ) هُوَ ...",
+                translation: "Wazan (penimbang) bagi perkataan (عَلِمَ) ialah ...",
+                options: [
+                    { text: "فَعَلَ", correct: false },
+                    { text: "فَعِلَ", correct: true },
+                    { text: "فَعُلَ", correct: false },
+                    { text: "أَفْعَلَ", correct: false }
+                ]
+            },
+            {
+                category: "Wazan Fi'il Thulathi Mazid (المزيد)",
+                instruction: "Tentukan wazan bagi kata kerja dengan tambahan huruf ini:",
+                arabic: "وَزْنُ الفِعْلِ (كَبَّرَ) هُوَ ...",
+                translation: "Wazan bagi kata kerja (كَبَّرَ) ialah ...",
+                options: [
+                    { text: "فَعَّلَ", correct: true },
+                    { text: "فَاعَلَ", correct: false },
+                    { text: "أَفْعَلَ", correct: false },
+                    { text: "تَفَعَّلَ", correct: false }
+                ]
+            }
+        ];
+
+        // Game State Variables
+        let currentQuestionIdx = 0;
+        let score = 0;
+        let correctCount = 0;
+        let timer = 20;
+        let timerInterval = null;
+        let isAnswerLocked = false;
+
+        // Pointer & Dwell Tracking Variables
+        let pointerX = window.innerWidth / 2;
+        let pointerY = window.innerHeight / 2;
+        let hoveredGiftIndex = -1;
+        let dwellStartTime = null;
+        const DWELL_DURATION = 1000; // 1 second threshold
+        let isCameraActive = true;
+
+        // DOM Element References
+        const pointerCursorEl = document.getElementById('pointer-cursor');
+        const dwellProgressBarEl = document.getElementById('dwell-progress-bar');
+        const questionTrackerEl = document.getElementById('question-tracker');
+        const timerDisplayEl = document.getElementById('timer-display');
+        const scoreDisplayEl = document.getElementById('score-display');
+        const questionCategoryEl = document.getElementById('question-category');
+        const questionArabicEl = document.getElementById('question-text-arabic');
+        const questionTranslationEl = document.getElementById('question-translation');
+
+        // Gift elements
+        const giftElements = [
+            document.getElementById('gift-0'),
+            document.getElementById('gift-1'),
+            document.getElementById('gift-2'),
+            document.getElementById('gift-3')
+        ];
+
+        const videoElement = document.getElementById('webcam');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+
+        function resizeCanvas() {
+            canvasElement.width = window.innerWidth;
+            canvasElement.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Initialize MediaPipe Hands tracking
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6
+        });
+
+        hands.onResults(onResults);
+
+        let camera = null;
+        function initCamera() {
+            camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    if (isCameraActive) {
+                        await hands.send({ image: videoElement });
+                    }
+                },
+                width: 1280,
+                height: 720
+            });
+            camera.start();
+        }
+
+        // Process Hand Tracking Landmarks
+        function onResults(results) {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+
+                // Draw hand landmarks on mirror canvas
+                drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, { color: '#eab308', lineWidth: 2 });
+                drawLandmarks(canvasCtx, landmarks, { color: '#f59e0b', lineWidth: 1, radius: 4 });
+
+                // Index Finger Tip is Landmark 8
+                const indexTip = landmarks[8];
+
+                // Mirror X coordinate because webcam feed is mirrored
+                const rawX = (1 - indexTip.x) * window.innerWidth;
+                const rawY = indexTip.y * window.innerHeight;
+
+                // Smooth pointer position
+                pointerX += (rawX - pointerX) * 0.4;
+                pointerY += (rawY - pointerY) * 0.4;
+
+                updatePointerUI();
+            }
+            canvasCtx.restore();
+        }
+
+        function updatePointerUI() {
+            pointerCursorEl.classList.remove('hidden');
+            pointerCursorEl.style.left = `${pointerX}px`;
+            pointerCursorEl.style.top = `${pointerY}px`;
+
+            checkPointerCollision();
+        }
+
+        // Fallback Mouse Pointer Interaction
+        window.addEventListener('mousemove', (e) => {
+            if (!isCameraActive) {
+                pointerX = e.clientX;
+                pointerY = e.clientY;
+                updatePointerUI();
+            }
+        });
+
+        // Check if pointer cursor is hovering over any of the 4 Gift Boxes
+        function checkPointerCollision() {
+            if (isAnswerLocked) return;
+
+            let currentlyHovered = -1;
+
+            giftElements.forEach((giftEl, idx) => {
+                const rect = giftEl.getBoundingClientRect();
+                if (
+                    pointerX >= rect.left &&
+                    pointerX <= rect.right &&
+                    pointerY >= rect.top &&
+                    pointerY <= rect.bottom
+                ) {
+                    currentlyHovered = idx;
+                }
+            });
+
+            if (currentlyHovered !== -1) {
+                if (hoveredGiftIndex !== currentlyHovered) {
+                    // New box hovered
+                    hoveredGiftIndex = currentlyHovered;
+                    dwellStartTime = performance.now();
+                    sound.playHover();
+                    highlightGiftBox(hoveredGiftIndex);
+                } else {
+                    // Continuing dwell on same box
+                    const elapsed = performance.now() - dwellStartTime;
+                    const progress = Math.min(elapsed / DWELL_DURATION, 1.0);
+                    
+                    // Update radial progress bar (dashoffset 100 to 0)
+                    const offset = 100 - (progress * 100);
+                    dwellProgressBarEl.style.strokeDashoffset = offset;
+
+                    if (progress >= 1.0) {
+                        // Dwell completed! Select this option
+                        triggerGiftSelection(hoveredGiftIndex);
+                    }
+                }
+            } else {
+                // Not hovering over any box
+                resetDwellState();
+            }
+        }
+
+        function highlightGiftBox(index) {
+            giftElements.forEach((el, i) => {
+                if (i === index) {
+                    el.classList.add('active-dwell');
+                } else {
+                    el.classList.remove('active-dwell');
+                }
+            });
+        }
+
+        function resetDwellState() {
+            hoveredGiftIndex = -1;
+            dwellStartTime = null;
+            dwellProgressBarEl.style.strokeDashoffset = 100;
+            giftElements.forEach(el => el.classList.remove('active-dwell'));
+        }
+
+        function startGame() {
+            sound.init();
+            document.getElementById('start-modal').classList.add('hidden');
+            currentQuestionIdx = 0;
+            score = 0;
+            correctCount = 0;
+            scoreDisplayEl.textContent = score;
+
+            initCamera();
+            loadQuestion();
+        }
+
+        function loadQuestion() {
+            isAnswerLocked = false;
+            resetDwellState();
+
+            const q = questionsData[currentQuestionIdx];
+            questionTrackerEl.textContent = `${currentQuestionIdx + 1} / ${questionsData.length}`;
+            questionCategoryEl.textContent = q.category;
+            questionArabicEl.textContent = q.arabic;
+            questionTranslationEl.textContent = q.translation;
+
+            // Populate gift boxes with options
+            giftElements.forEach((giftEl, idx) => {
+                const optTextEl = giftEl.querySelector('.option-arabic');
+                const boxClosed = giftEl.querySelector('.box-closed-icon');
+                const boxOpened = giftEl.querySelector('.box-opened-icon');
+
+                giftEl.classList.remove('gift-opened', 'border-emerald-400', 'border-rose-500', 'bg-emerald-950/60', 'bg-rose-950/60');
+                giftEl.classList.add('glass-box');
+                boxClosed.classList.remove('hidden');
+                boxOpened.classList.add('hidden');
+
+                if (q.options[idx]) {
+                    optTextEl.textContent = q.options[idx].text;
+                    giftEl.setAttribute('data-correct', q.options[idx].correct);
+                }
+            });
+
+            // Start Question Countdown Timer
+            startTimer();
+        }
+
+        function startTimer() {
+            clearInterval(timerInterval);
+            timer = 20;
+            timerDisplayEl.textContent = `${timer}s`;
+            timerDisplayEl.className = "text-lg font-mono font-extrabold text-emerald-400";
+
+            timerInterval = setInterval(() => {
+                timer--;
+                timerDisplayEl.textContent = `${timer}s`;
+
+                if (timer <= 5) {
+                    timerDisplayEl.className = "text-lg font-mono font-extrabold text-rose-400 animate-pulse";
+                }
+
+                if (timer <= 0) {
+                    clearInterval(timerInterval);
+                    handleTimeOut();
+                }
+            }, 1000);
+        }
+
+        function handleTimeOut() {
+            if (isAnswerLocked) return;
+            isAnswerLocked = true;
+            sound.playWrong();
+
+            // Reveal correct answer box
+            giftElements.forEach((el) => {
+                if (el.getAttribute('data-correct') === 'true') {
+                    openGiftVisual(el, true);
+                }
+            });
+
+            setTimeout(nextQuestion, 2000);
+        }
+
+        // Triggered upon 1-second Dwell completion
+        function triggerGiftSelection(index) {
+            if (isAnswerLocked) return;
+            isAnswerLocked = true;
+            clearInterval(timerInterval);
+
+            const selectedGiftEl = giftElements[index];
+            const isCorrect = selectedGiftEl.getAttribute('data-correct') === 'true';
+
+            openGiftVisual(selectedGiftEl, isCorrect);
+
+            if (isCorrect) {
+                sound.playSuccess();
+                correctCount++;
+                // Time-based Bonus Score: Base 1000 + (remaining seconds * 50)
+                const questionScore = 1000 + (timer * 50);
+                score += questionScore;
+                scoreDisplayEl.textContent = score;
+
+                // Launch colorful confetti particles
+                confetti({
+                    particleCount: 70,
+                    spread: 60,
+                    origin: { y: 0.6 }
+                });
+            } else {
+                sound.playWrong();
+                // Highlight actual correct answer in green as well
+                giftElements.forEach((el) => {
+                    if (el.getAttribute('data-correct') === 'true') {
+                        openGiftVisual(el, true);
+                    }
+                });
+            }
+
+            setTimeout(nextQuestion, 2200);
+        }
+
+        function openGiftVisual(giftEl, isCorrect) {
+            giftEl.classList.add('gift-opened');
+            const boxClosed = giftEl.querySelector('.box-closed-icon');
+            const boxOpened = giftEl.querySelector('.box-opened-icon');
+
+            boxClosed.classList.add('hidden');
+            boxOpened.classList.remove('hidden');
+
+            if (isCorrect) {
+                giftEl.classList.add('border-emerald-400', 'bg-emerald-950/60');
+            } else {
+                giftEl.classList.add('border-rose-500', 'bg-rose-950/60');
+            }
+        }
+
+        function nextQuestion() {
+            currentQuestionIdx++;
+            if (currentQuestionIdx < questionsData.length) {
+                loadQuestion();
+            } else {
+                endGame();
+            }
+        }
+
+        function endGame() {
+            clearInterval(timerInterval);
+            document.getElementById('result-modal').classList.remove('hidden');
+
+            document.getElementById('res-score').textContent = score;
+            document.getElementById('res-accuracy').textContent = `${correctCount} / ${questionsData.length}`;
+
+            saveHighScore(score);
+            renderLeaderboard();
+        }
+
+        function saveHighScore(newScore) {
+            let highScores = JSON.parse(localStorage.getItem('nahu_high_scores') || '[]');
+            const dateStr = new Date().toLocaleDateString('ms-MY', { day: 'numeric', month: 'short' });
+            
+            highScores.push({ score: newScore, date: dateStr, correct: correctCount });
+            highScores.sort((a, b) => b.score - a.score);
+            highScores = highScores.slice(0, 5); // Keep top 5
+
+            localStorage.setItem('nahu_high_scores', JSON.stringify(highScores));
+        }
+
+        function renderLeaderboard() {
+            const listEl = document.getElementById('leaderboard-list');
+            const highScores = JSON.parse(localStorage.getItem('nahu_high_scores') || '[]');
+
+            if (highScores.length === 0) {
+                listEl.innerHTML = '<li class="text-slate-500 py-1">Tiada rekod lagi</li>';
+                return;
+            }
+
+            listEl.innerHTML = highScores.map((hs, idx) => `
+                <li class="flex justify-between items-center py-1.5">
+                    <span class="font-bold text-amber-300">#${idx + 1}</span>
+                    <span class="text-slate-300">${hs.score} mata (${hs.correct}/10)</span>
+                    <span class="text-slate-500 text-[10px]">${hs.date}</span>
+                </li>
+            `).join('');
+        }
+
+        function restartGame() {
+            document.getElementById('result-modal').classList.add('hidden');
+            startGame();
+        }
+
+        // Click event listener fallback on gift elements
+        giftElements.forEach((giftEl, idx) => {
+            giftEl.addEventListener('click', () => {
+                if (!isAnswerLocked) {
+                    triggerGiftSelection(idx);
+                }
+            });
+        });
+
+        // Toggle Camera / Manual Pointer
+        function toggleCameraControl() {
+            isCameraActive = !isCameraActive;
+            const statusEl = document.getElementById('cam-status');
+            const iconEl = document.getElementById('cam-icon');
+
+            if (isCameraActive) {
+                statusEl.textContent = "Webcam On";
+                iconEl.className = "fa-solid fa-video text-emerald-400";
+            } else {
+                statusEl.textContent = "Mod Tetikus";
+                iconEl.className = "fa-solid fa-mouse text-amber-400";
+            }
+        }
+    </script>
+</body>
+</html>
